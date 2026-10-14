@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' file:; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src *;" />
+  <title>AVMerge</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── Header ──────────────────────────────────────── -->
+    <header class="header">
+      <div class="header-left">
+        <span class="logo">AV<span class="logo-accent">Merge</span></span>
+        <span class="tagline">Audio Merger</span>
+      </div>
+      <div id="ffmpeg-status" class="status-badge status-checking">Checking FFmpeg...</div>
+    </header>
+
+    <!-- ── Main content ────────────────────────────────── -->
+    <main class="main">
+
+      <!-- Intro Audio -->
+      <section class="card" id="intro-card">
+        <div class="card-header">
+          <h2 class="card-title">Intro Audio</h2>
+          <span class="card-hint">Plays once at the start</span>
+        </div>
+        <div id="intro-content" class="intro-content">
+          <div id="intro-empty" class="intro-empty">
+            <span class="empty-icon">&#9835;</span>
+            <span>No intro file selected</span>
+          </div>
+          <div id="intro-file" class="intro-file hidden">
+            <div class="file-info">
+              <span id="intro-name" class="file-name"></span>
+              <span id="intro-duration" class="file-duration">—</span>
+            </div>
+            <div class="file-actions">
+              <button id="intro-preview-btn" class="btn btn-icon" title="Preview">&#9654;</button>
+              <button id="intro-remove-btn" class="btn btn-icon btn-danger" title="Remove">&#10005;</button>
+            </div>
+          </div>
+        </div>
+        <button id="browse-intro" class="btn btn-secondary">Browse Intro File</button>
+      </section>
+
+      <!-- Content Tracks -->
+      <section class="card" id="tracks-card">
+        <div class="card-header">
+          <h2 class="card-title">Content Tracks</h2>
+          <button id="add-tracks" class="btn btn-primary btn-sm">+ Add Tracks</button>
+        </div>
+        <div id="tracks-list" class="tracks-list">
+          <div id="tracks-empty" class="tracks-empty">
+            <span class="empty-icon">&#9835;</span>
+            <p>No tracks added yet.</p>
+            <p class="empty-hint">Click "+ Add Tracks" to add audio files.</p>
+          </div>
+          <!-- Track items are injected here by app.js -->
+        </div>
+      </section>
+
+      <!-- Background Visual -->
+      <section class="card" id="bg-card">
+        <div class="card-header">
+          <h2 class="card-title">Background Visual <span class="optional-tag">Optional</span></h2>
+          <span class="card-hint">GIF hoặc video silent → xuất ra MP4</span>
+        </div>
+        <div id="bg-content">
+          <div id="bg-empty" class="bg-empty">
+            <span class="empty-icon">&#9634;</span>
+            <span>Chưa chọn — output sẽ là file audio</span>
+          </div>
+          <div id="bg-file" class="bg-file hidden">
+            <div class="bg-preview-wrap">
+              <img id="bg-preview-gif" class="bg-preview hidden" alt="preview" />
+              <video id="bg-preview-video" class="bg-preview hidden" muted loop autoplay playsinline></video>
+            </div>
+            <div class="bg-info">
+              <span id="bg-name" class="file-name"></span>
+              <span id="bg-type-tag" class="bg-type-tag"></span>
+            </div>
+            <button id="bg-remove-btn" class="btn btn-icon btn-danger" title="Remove">&#10005;</button>
+          </div>
+        </div>
+        <button id="browse-bg" class="btn btn-secondary">Browse GIF / Video</button>
+      </section>
+
+      <!-- Settings -->
+      <section class="card" id="settings-card">
+        <div class="card-header">
+          <h2 class="card-title">Settings</h2>
+        </div>
+        <div class="settings-grid">
+          <div class="setting-row">
+            <label for="repeat-count" class="setting-label">
+              Repeat Count
+              <span class="setting-hint">How many times to play all content tracks</span>
+            </label>
+            <input id="repeat-count" type="number" class="input-number" value="1" min="1" max="999" />
+          </div>
+          <div class="setting-row">
+            <label class="setting-label">
+              Output File
+              <span id="output-hint" class="setting-hint">Where to save the merged audio</span>
+            </label>
+            <div class="output-row">
+              <span id="output-display" class="output-display">Not set</span>
+              <button id="browse-output" class="btn btn-secondary btn-sm">Browse</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Playlist Preview -->
+      <section class="card hidden" id="playlist-card">
+        <div class="card-header">
+          <h2 class="card-title">Playlist Preview</h2>
+          <button id="reshuffle-btn" class="btn btn-secondary btn-sm">Reshuffle</button>
+        </div>
+        <ol id="playlist-preview" class="playlist-preview"></ol>
+      </section>
+
+      <!-- Merge Action -->
+      <section class="card" id="action-card">
+        <button id="merge-btn" class="btn btn-merge" disabled>Merge</button>
+
+        <div id="progress-section" class="progress-section hidden">
+          <div class="progress-bar-wrap">
+            <div id="progress-bar" class="progress-bar" style="width: 0%"></div>
+          </div>
+          <div class="progress-meta">
+            <span id="progress-percent">0%</span>
+            <span id="progress-time"></span>
+          </div>
+        </div>
+
+        <div id="status-msg" class="status-msg hidden"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
