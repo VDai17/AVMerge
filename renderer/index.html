@@ -127,6 +127,15 @@
 
       <!-- Merge Action -->
       <section class="card" id="action-card">
+
+        <!-- Pre-merge summary: output duration + rough speed hint -->
+        <div id="output-summary" class="output-summary hidden">
+          <span class="summary-icon">&#9654;</span>
+          <span id="summary-duration" class="summary-duration"></span>
+          <span id="summary-mode" class="summary-mode"></span>
+          <span id="summary-hint" class="summary-hint"></span>
+        </div>
+
         <button id="merge-btn" class="btn btn-merge" disabled>Merge</button>
 
         <div id="progress-section" class="progress-section hidden">
@@ -136,6 +145,7 @@
           <div class="progress-meta">
             <span id="progress-percent">0%</span>
             <span id="progress-time"></span>
+            <span id="progress-eta" class="progress-eta"></span>
           </div>
         </div>
 

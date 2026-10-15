@@ -4,13 +4,15 @@
    State
    ════════════════════════════════════════════════════════════════ */
 const state = {
-  intro:          null,   // { path, name, duration }
-  tracks:         [],     // [{ id, path, name, duration }, ...]
-  repeatCount:    1,
-  outputPath:     '',
-  background:     null,   // { path, name, ext, isGif }
-  processing:     false,
-  playlist:       [],
+  intro:               null,   // { path, name, duration }
+  tracks:              [],     // [{ id, path, name, duration }, ...]
+  repeatCount:         1,
+  outputPath:          '',
+  background:          null,   // { path, name, ext, isGif }
+  processing:          false,
+  playlist:            [],
+  totalOutputDuration: 0,      // seconds — pre-calculated before merge
+  mergeStartTime:      null,   // Date.now() when merge began
 };
 
 let trackIdCounter = 0;
@@ -56,6 +58,42 @@ function fmtDuration(sec) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** "HH:MM:SS.ss" or "MM:SS.ss" → seconds */
+function parseTimemark(tm) {
+  if (!tm) return 0;
+  const parts = tm.split(':');
+  if (parts.length === 3) {
+    return parseInt(parts[0], 10) * 3600
+         + parseInt(parts[1], 10) * 60
+         + parseFloat(parts[2]);
+  }
+  if (parts.length === 2) {
+    return parseInt(parts[0], 10) * 60 + parseFloat(parts[1]);
+  }
+  return 0;
+}
+
+/** Total seconds the output file will be (audio drives the duration). */
+function calculateTotalDuration() {
+  let total = 0;
+  if (state.intro) total += state.intro.duration;
+  const trackSum = state.tracks.reduce((s, t) => s + t.duration, 0);
+  total += trackSum * state.repeatCount;
+  return total;
+}
+
+/** Format seconds as "Xh Ym Zs" for ETA display. */
+function fmtEta(sec) {
+  if (!sec || isNaN(sec) || sec <= 0) return '';
+  sec = Math.round(sec);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}g ${m}p ${s}s`;
+  if (m > 0) return `${m}p ${s}s`;
+  return `${s}s`;
+}
+
 function el(id) { return document.getElementById(id); }
 
 function fileExt(p) {
@@ -95,11 +133,17 @@ const dom = {
   playlistCard:    el('playlist-card'),
   playlistPreview: el('playlist-preview'),
   reshuffleBtn:    el('reshuffle-btn'),
+  // action card
+  outputSummary:   el('output-summary'),
+  summaryDuration: el('summary-duration'),
+  summaryMode:     el('summary-mode'),
+  summaryHint:     el('summary-hint'),
   mergeBtn:        el('merge-btn'),
   progressSection: el('progress-section'),
   progressBar:     el('progress-bar'),
   progressPercent: el('progress-percent'),
   progressTime:    el('progress-time'),
+  progressEta:     el('progress-eta'),
   statusMsg:       el('status-msg'),
 };
 
@@ -135,6 +179,7 @@ function bindEvents() {
     const v = parseInt(dom.repeatCount.value, 10);
     state.repeatCount = isNaN(v) || v < 1 ? 1 : Math.min(v, 999);
     updatePlaylistPreview();
+    updateOutputSummary();
     updateMergeButton();
   });
 
@@ -146,9 +191,33 @@ function bindEvents() {
   dom.mergeBtn.addEventListener('click', startMerge);
 
   window.api.onMergeProgress((data) => {
-    dom.progressBar.style.width     = `${data.percent}%`;
-    dom.progressPercent.textContent = `${data.percent}%`;
-    if (data.timemark) dom.progressTime.textContent = data.timemark;
+    const { percent, timemark } = data;
+
+    dom.progressBar.style.width     = `${percent}%`;
+    dom.progressPercent.textContent = `${percent}%`;
+
+    if (!timemark) return;
+
+    const processedSec = parseTimemark(timemark);
+    const totalSec     = state.totalOutputDuration;
+
+    // "processed / total"
+    dom.progressTime.textContent = totalSec > 0
+      ? `${fmtDuration(processedSec)} / ${fmtDuration(totalSec)}`
+      : fmtDuration(processedSec);
+
+    // ETA — only reliable after 2 seconds of real data
+    if (state.mergeStartTime && processedSec > 2 && totalSec > 0) {
+      const elapsedSec = (Date.now() - state.mergeStartTime) / 1000;
+      const speed      = processedSec / elapsedSec;           // e.g. 3.0 = 3× realtime
+      const remainSec  = Math.max(0, totalSec - processedSec);
+      const etaSec     = remainSec / speed;
+      const speedLabel = speed.toFixed(1);
+
+      dom.progressEta.textContent = etaSec > 1
+        ? `~${fmtEta(etaSec)} còn lại  (${speedLabel}×)`
+        : 'Sắp xong...';
+    }
   });
 }
 
@@ -170,6 +239,7 @@ async function selectIntroFile() {
 
   renderIntro();
   updatePlaylistPreview();
+  updateOutputSummary();
   updateMergeButton();
 }
 
@@ -178,6 +248,7 @@ function removeIntro() {
   state.intro = null;
   renderIntro();
   updatePlaylistPreview();
+  updateOutputSummary();
   updateMergeButton();
 }
 
@@ -217,6 +288,7 @@ async function addContentTracks() {
   state.tracks.push(...newTracks);
   renderTracksList();
   updatePlaylistPreview();
+  updateOutputSummary();
   updateMergeButton();
 }
 
@@ -225,6 +297,7 @@ function removeTrack(id) {
   state.tracks = state.tracks.filter((t) => t.id !== id);
   renderTracksList();
   updatePlaylistPreview();
+  updateOutputSummary();
   updateMergeButton();
 }
 
@@ -333,11 +406,11 @@ async function selectBackground() {
   dom.outputDisplay.textContent = 'Not set';
   dom.outputDisplay.classList.remove('is-set');
   updateOutputHint();
+  updateOutputSummary();
   updateMergeButton();
 }
 
 function removeBackground() {
-  // Stop video preview if playing
   dom.bgPreviewVideo.pause();
   dom.bgPreviewVideo.src = '';
 
@@ -347,6 +420,7 @@ function removeBackground() {
   dom.outputDisplay.textContent = 'Not set';
   dom.outputDisplay.classList.remove('is-set');
   updateOutputHint();
+  updateOutputSummary();
   updateMergeButton();
 }
 
@@ -438,6 +512,41 @@ function updatePlaylistPreview() {
 }
 
 /* ════════════════════════════════════════════════════════════════
+   Output summary (pre-merge duration + mode info)
+   ════════════════════════════════════════════════════════════════ */
+function updateOutputSummary() {
+  const hasFiles = state.intro !== null || state.tracks.length > 0;
+  if (!hasFiles) {
+    dom.outputSummary.classList.add('hidden');
+    state.totalOutputDuration = 0;
+    return;
+  }
+
+  const totalSec = calculateTotalDuration();
+  state.totalOutputDuration = totalSec;
+
+  dom.summaryDuration.textContent = `Thời lượng: ${fmtDuration(totalSec)}`;
+
+  const isVideo = Boolean(state.background);
+  dom.summaryMode.textContent  = isVideo ? 'MP4 video' : 'Audio';
+  dom.summaryMode.className    = `summary-mode ${isVideo ? 'mode-video' : 'mode-audio'}`;
+
+  // Rough pre-start estimate for video mode only (audio is near-instant)
+  if (isVideo && totalSec > 0) {
+    // ultrafast H.264 typically encodes at 3-8× realtime for simple GIF/video backgrounds.
+    // Use 3× as a conservative lower bound so the user isn't surprised.
+    const minSec = totalSec / 8;
+    const maxSec = totalSec / 3;
+    dom.summaryHint.textContent =
+      `Ước tính encode: ${fmtEta(minSec)} – ${fmtEta(maxSec)} (tuỳ CPU)`;
+  } else {
+    dom.summaryHint.textContent = '';
+  }
+
+  dom.outputSummary.classList.remove('hidden');
+}
+
+/* ════════════════════════════════════════════════════════════════
    Merge button state
    ════════════════════════════════════════════════════════════════ */
 function updateMergeButton() {
@@ -456,13 +565,17 @@ async function startMerge() {
   hideStatus();
   stopPreview();
 
-  state.processing = true;
+  state.processing    = true;
+  state.mergeStartTime = Date.now();
+  state.totalOutputDuration = calculateTotalDuration();
+
   dom.mergeBtn.disabled    = true;
   dom.mergeBtn.textContent = 'Processing...';
   dom.progressSection.classList.remove('hidden');
   dom.progressBar.style.width     = '0%';
   dom.progressPercent.textContent = '0%';
-  dom.progressTime.textContent    = '';
+  dom.progressTime.textContent    = `0:00 / ${fmtDuration(state.totalOutputDuration)}`;
+  dom.progressEta.textContent     = 'Đang tính...';
 
   const result = await window.api.mergeAudio({
     introPath:      state.intro?.path ?? null,
@@ -472,12 +585,14 @@ async function startMerge() {
     backgroundPath: state.background?.path ?? null,
   });
 
-  state.processing = false;
+  state.processing     = false;
+  state.mergeStartTime = null;
   updateMergeButton();
 
   if (result.success) {
     dom.progressBar.style.width     = '100%';
     dom.progressPercent.textContent = '100%';
+    dom.progressEta.textContent     = 'Hoàn tất';
     showStatusSuccess();
   } else {
     dom.progressSection.classList.add('hidden');
